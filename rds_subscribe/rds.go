@@ -35,7 +35,7 @@ type service struct {
 
 func New(rds *redis.Client) Service {
 	return &service{
-		rds:          rds.WithTimeout(0),
+		rds:          rds,
 		isRunning:    false,
 		subscribeMap: make(map[string]map[string]CallBack),
 	}
