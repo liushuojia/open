@@ -19,7 +19,7 @@ var (
 	RegisterInit    = lc.RegisterInit
 	RegisterDestroy = lc.RegisterDestroy
 	lcInit          = lc.Init
-	lcDestroy       = lc.RegisterDestroy
+	lcDestroy       = lc.Destroy
 )
 
 type LifeCycle interface {
