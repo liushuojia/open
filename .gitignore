@@ -1,0 +1,11 @@
+*.log
+*.exe
+*.bak*
+
+.idea
+.vscode
+
+logs
+.DS_Store
+
+main
