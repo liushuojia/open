@@ -14,6 +14,7 @@ type CallBack func(ctx context.Context, channel, msg string)
 type Service interface {
 	// Start 启动服务
 	Start(ctx context.Context) error
+	Stop() error
 	// IsRunning 检查服务是否运行中
 	IsRunning() bool
 	// Register 注册回调
@@ -26,6 +27,7 @@ var _ Service = (*service)(nil)
 
 type service struct {
 	ctx          context.Context
+	cancel       context.CancelFunc
 	rds          *redis.Client
 	sub          *redis.PubSub
 	isRunning    bool
@@ -50,12 +52,18 @@ func (s *service) Start(ctx context.Context) error {
 		return nil
 	}
 
-	s.ctx = ctx
+	s.ctx, s.cancel = context.WithCancel(ctx)
 	_ = s.Register("ping", "key", func(ctx context.Context, channel, msg string) {
 		log.Println("PONG", channel, msg)
 	})
 
 	go s.subscribe()
+	return nil
+}
+func (s *service) Stop() error {
+	if s.IsRunning() {
+		s.cancel()
+	}
 	return nil
 }
 func (s *service) subscribe() {
