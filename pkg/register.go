@@ -1,9 +1,14 @@
 package pkg
 
 import (
+	"errors"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
+	"time"
 
-	utils "github.com/liushuojia/open"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -18,15 +23,13 @@ var (
 	lc              = NewLifeCycle()
 	RegisterInit    = lc.RegisterInit
 	RegisterDestroy = lc.RegisterDestroy
-	lcInit          = lc.Init
-	lcDestroy       = lc.Destroy
+	Run             = lc.Run
 )
 
 type LifeCycle interface {
 	RegisterInit(fn ...func() error)    // 注册服务
 	RegisterDestroy(fn ...func() error) // 注销服务
-	Init() error                        // 启动服务 初始化
-	Destroy() error                     // 停止服务 注销
+	Run()                               // 启动服务
 }
 
 type lifeCycle struct {
@@ -63,16 +66,23 @@ func (lc *lifeCycle) RegisterDestroy(fn ...func() error) {
 }
 
 // Init 执行注册的初始化函数，顺序执行直到初始化函数返回error，并将error返回
-func (lc *lifeCycle) Init() error {
+func (lc *lifeCycle) init() error {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 	lc.setStatus(LifeCycleStatusInit)
 
-	return utils.WaitError(lc.initFuncList...)
+	var err error
+	for _, fn := range lc.initFuncList {
+		if e := fn(); e != nil {
+			err = errors.Join(err, e)
+		}
+	}
+
+	return err
 }
 
 // Destroy 执行注册的Destroy函数，逆序执行所有Destroy函数，收集返回error聚合为errors返回
-func (lc *lifeCycle) Destroy() error {
+func (lc *lifeCycle) destroy() error {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 	lc.setStatus(LifeCycleStatusDestroy)
@@ -83,5 +93,33 @@ func (lc *lifeCycle) Destroy() error {
 		fns[i], fns[j] = fns[j], fns[i]
 	}
 
-	return utils.WaitError(fns...)
+	var err error
+	for _, fn := range fns {
+		if e := fn(); e != nil {
+			err = errors.Join(err, e)
+		}
+	}
+
+	return err
+}
+
+// Run 启动服务
+func (lc *lifeCycle) Run() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("panic recover", err)
+		}
+	}()
+
+	if err := lc.init(); err != nil {
+		log.Fatalln(err.Error())
+		return
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	_ = lc.destroy()
+	time.Sleep(time.Millisecond * 800)
 }
