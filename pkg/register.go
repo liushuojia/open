@@ -3,7 +3,7 @@ package pkg
 import (
 	"sync"
 
-	utils "github.com/liushuojia/open.git"
+	utils "github.com/liushuojia/open"
 )
 
 const (

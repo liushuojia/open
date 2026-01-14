@@ -1,4 +1,4 @@
-module github.com/liushuojia/open.git
+module github.com/liushuojia/open
 
 go 1.25.5
 
