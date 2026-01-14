@@ -13,7 +13,7 @@ type CallBack func(ctx context.Context, channel, msg string)
 
 type Service interface {
 	// Start 启动服务
-	Start(ctx context.Context) error
+	Start() error
 	Stop() error
 	// IsRunning 检查服务是否运行中
 	IsRunning() bool
@@ -43,7 +43,7 @@ func New(rds *redis.Client) Service {
 	}
 }
 
-func (s *service) Start(ctx context.Context) error {
+func (s *service) Start() error {
 	if s.rds == nil {
 		return errors.New("redis is nil")
 	}
@@ -52,7 +52,7 @@ func (s *service) Start(ctx context.Context) error {
 		return nil
 	}
 
-	s.ctx, s.cancel = context.WithCancel(ctx)
+	s.ctx, s.cancel = context.WithCancel(context.Background())
 	_ = s.Register("ping", "key", func(ctx context.Context, channel, msg string) {
 		log.Println("PONG", channel, msg)
 	})
@@ -103,6 +103,9 @@ func (s *service) subscribe() {
 				}
 			}
 		case <-s.ctx.Done():
+			s.lock.Lock()
+			s.isRunning = false
+			s.lock.Unlock()
 			return
 		}
 	}
