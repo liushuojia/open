@@ -12,10 +12,10 @@ func loadOptions(options ...Option) *Options {
 }
 
 type Options struct {
-	filePath string
+	filePath []string
 }
 
-func WithFilePath(filePath string) Option {
+func WithFilePath(filePath ...string) Option {
 	return func(opts *Options) {
 		opts.filePath = filePath
 	}
