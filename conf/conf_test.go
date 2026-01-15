@@ -21,4 +21,20 @@ func Test_Client(t *testing.T) {
 		fmt.Println(v)
 	}
 
+	fmt.Println(cc.GetInt64ByField("aa"))
+	fmt.Println(cc.GetInt64ByField("cc"))
+	fmt.Println(cc.GetInt64ByField("bb", "cc"))
+	fmt.Println(cc.GetInt64ByField("mysql", "example", "database"))
+	fmt.Println(cc.GetInt64ByField("redis", "1", "db"))
+
+	var ccc struct {
+		Name          string `json:"name"`
+		Port          int    `json:"port"`
+		ApiPrefix     string `json:"apiPrefix"`
+		Debug         bool   `json:"debug"`
+		FileSharePath string `json:"fileSharePath"`
+	}
+	fmt.Println(cc.GetByField(&ccc))
+	fmt.Println(ccc)
+
 }

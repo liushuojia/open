@@ -4,3 +4,11 @@ c = "cc"
 dd = "dd"
 aa = 2
 cc = 3
+
+
+debug = true
+name = "quantify"
+apiPrefix = "/api/v1"
+port = 8080
+
+fileSharePath = "./share"

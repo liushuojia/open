@@ -1,18 +1,27 @@
 package conf
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	utils "github.com/liushuojia/open"
+	mail "github.com/liushuojia/open/email"
+	"github.com/liushuojia/open/minio"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 type Conf interface {
-	Mysql(field string) (*Mysql, error)
-	Redis(field string) (*Redis, error)
+	Mysql(field string) (*gorm.DB, error)
+	Redis(field string) (*redis.Client, error)
 	Token(field string) (*Token, error)
-	Minio(field string) (*Minio, error)
-	Email(field string) ([]*Email, error)
+	Minio(field string) (*minio.Conn, error)
+	Email(field string) ([]mail.Client, error)
+
+	GetInt64ByField(fields ...string) (value int64, err error)
+	GetStringByField(fields ...string) (value string, err error)
+	GetByField(value any, fields ...string) (err error)
 }
 
 type config struct {
@@ -74,17 +83,19 @@ func New(options ...Option) (Conf, error) {
 	return c, nil
 }
 
-func (c *config) Mysql(field string) (*Mysql, error) {
-	if v, ok := c.mysql[field]; ok {
-		return v, nil
+func (c *config) Mysql(field string) (*gorm.DB, error) {
+	v, ok := c.mysql[field]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("not found %s", field))
 	}
-	return nil, errors.New(fmt.Sprintf("not found %s", field))
+	return utils.MysqlConnect(v.Address, v.Username, v.Password, v.Database)
 }
-func (c *config) Redis(field string) (*Redis, error) {
-	if v, ok := c.redis[field]; ok {
-		return v, nil
+func (c *config) Redis(field string) (*redis.Client, error) {
+	v, ok := c.redis[field]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("not found %s", field))
 	}
-	return nil, errors.New(fmt.Sprintf("not found %s", field))
+	return utils.RedisConnect(v.Address, v.Password, v.DB)
 }
 func (c *config) Token(field string) (*Token, error) {
 	if v, ok := c.token[field]; ok {
@@ -92,15 +103,84 @@ func (c *config) Token(field string) (*Token, error) {
 	}
 	return nil, errors.New(fmt.Sprintf("not found %s", field))
 }
-func (c *config) Minio(field string) (*Minio, error) {
-	if v, ok := c.minio[field]; ok {
-		return v, nil
+func (c *config) Minio(field string) (*minio.Conn, error) {
+	v, ok := c.minio[field]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("not found %s", field))
 	}
-	return nil, errors.New(fmt.Sprintf("not found %s", field))
+
+	conn, err := minio.New().SetAddresses(v.Address).SetAccessKey(v.Access).SetSecretKey(v.Secret).SetUseSSL(v.UseSSL).Connect()
+	if err != nil {
+		return nil, err
+	}
+
+	return conn, nil
 }
-func (c *config) Email(field string) ([]*Email, error) {
-	if v, ok := c.email[field]; ok {
-		return v, nil
+func (c *config) Email(field string) ([]mail.Client, error) {
+	l, ok := c.email[field]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("not found %s", field))
 	}
-	return nil, errors.New(fmt.Sprintf("not found %s", field))
+	mailList := make([]mail.Client, 0)
+	for _, v := range l {
+		mailList = append(mailList, mail.New(v.Account, v.Passwd, v.Smtp, v.Port))
+	}
+	return mailList, nil
+}
+
+func (c *config) getByField(fields ...string) (value any, err error) {
+	var (
+		valueAny any
+		mapTmp   = c.m
+	)
+
+	if len(fields) <= 0 {
+		return mapTmp, nil
+	}
+
+	for _, f := range fields {
+		v, ok := mapTmp[f]
+		if !ok {
+			return 0, errors.New("not found")
+		}
+		if m, ok := v.(map[string]any); ok {
+			mapTmp = m
+		}
+		valueAny = v
+	}
+
+	return valueAny, nil
+}
+func (c *config) GetInt64ByField(fields ...string) (value int64, err error) {
+	v, err := c.getByField(fields...)
+	if err != nil {
+		return 0, err
+	}
+	if value, ok := v.(int64); ok {
+		return value, nil
+	}
+	return 0, errors.New("field value is not number")
+}
+func (c *config) GetStringByField(fields ...string) (value string, err error) {
+	v, err := c.getByField(fields...)
+	if err != nil {
+		return "", err
+	}
+	if value, ok := v.(string); ok {
+		return value, nil
+	}
+	return "", errors.New("field value is not number")
+}
+func (c *config) GetByField(value any, fields ...string) (err error) {
+	v, err := c.getByField(fields...)
+	if err != nil {
+		return err
+	}
+
+	j, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(j, &value)
 }
