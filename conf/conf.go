@@ -8,14 +8,24 @@ import (
 	utils "github.com/liushuojia/open"
 	mail "github.com/liushuojia/open/email"
 	"github.com/liushuojia/open/minio"
+	"github.com/liushuojia/open/token"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
+var defaultConfig Conf
+
+func SetDefault(c Conf) {
+	defaultConfig = c
+}
+func GetDefault() Conf {
+	return defaultConfig
+}
+
 type Conf interface {
 	Mysql(field string) (*gorm.DB, error)
 	Redis(field string) (*redis.Client, error)
-	Token(field string) (*Token, error)
+	Token(field string) (*token.JWT, error)
 	Minio(field string) (*minio.Conn, error)
 	Email(field string) ([]mail.Client, error)
 
@@ -97,9 +107,9 @@ func (c *config) Redis(field string) (*redis.Client, error) {
 	}
 	return utils.RedisConnect(v.Address, v.Password, v.DB)
 }
-func (c *config) Token(field string) (*Token, error) {
+func (c *config) Token(field string) (*token.JWT, error) {
 	if v, ok := c.token[field]; ok {
-		return v, nil
+		return token.New(token.WithSecret([]byte(v.Key)), token.WithIssuer(v.Issuer), token.WithExpire(v.Expire)), nil
 	}
 	return nil, errors.New(fmt.Sprintf("not found %s", field))
 }
