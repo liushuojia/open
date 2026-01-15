@@ -105,11 +105,11 @@ func (lc *lifeCycle) destroy() error {
 
 // Run 启动服务
 func (lc *lifeCycle) Run() {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Println("panic recover", err)
-		}
-	}()
+	//defer func() {
+	//	if err := recover(); err != nil {
+	//		log.Println("panic recover", err)
+	//	}
+	//}()
 
 	if err := lc.init(); err != nil {
 		log.Fatalln(err.Error())
