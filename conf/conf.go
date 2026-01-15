@@ -90,6 +90,10 @@ func New(options ...Option) (Conf, error) {
 		}
 	}
 
+	if defaultConfig == nil {
+		SetDefault(c)
+	}
+
 	return c, nil
 }
 
