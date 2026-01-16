@@ -13,7 +13,6 @@ database = "new_example"
 address = "192.168.2.3:6379"
 password = "liushuojia"
 db = 30
-prefix = "new:dev"
 
 [token.default]
 key = "a1ab2bc3cd4de5ef6fg7g0011223344556677889900123465u11222ser"
@@ -33,7 +32,7 @@ address = "192.168.2.3:9000"
 access = "BD4SOlUQ8npTbGtLdgPV"
 secret = "30KlHODmQxsaSrQxd3wkZSET1UZ4fkct0jz6pEyI"
 useSSL = false
-bucket = "example-test"
+bucket = "example"
 
 ===========================================================================================
 */
@@ -53,7 +52,6 @@ type (
 		Address  string `toml:"address"`
 		Password string `toml:"password"`
 		DB       int    `toml:"db"`
-		Prefix   string `toml:"prefix"`
 	}
 	Email struct {
 		Account string `toml:"account"`
@@ -67,6 +65,5 @@ type (
 		Access  string `toml:"access"`
 		Secret  string `toml:"secret"`
 		UseSSL  bool   `toml:"useSSL"`
-		Bucket  string `toml:"bucket"`
 	}
 )

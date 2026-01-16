@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	jwt "github.com/golang-jwt/jwt/v5"
 )
 
 // Claims 加密主体, 根据实际情况修改
@@ -17,17 +17,23 @@ type Claims struct {
 	jwt.RegisteredClaims // 嵌入标准声明
 }
 
-// JWT 处理结构
-type JWT struct {
+var _ JWT = (*jsonWebToken)(nil)
+
+type JWT interface {
+	Generate(options ...ValueOption) (token string, err error)
+	Parse(token string) (*Claims, error)
+}
+
+type jsonWebToken struct {
 	Issuer  string
 	Subject string
 	expire  string
 	Secret  []byte
 }
 
-func New(options ...Option) *JWT {
+func New(options ...Option) JWT {
 	opt := loadOptions(options...)
-	return &JWT{
+	return &jsonWebToken{
 		Subject: opt.Subject,
 		Issuer:  opt.Issuer,
 		expire:  opt.Expire,
@@ -36,7 +42,7 @@ func New(options ...Option) *JWT {
 }
 
 // Generate 生成token
-func (j *JWT) Generate(options ...ValueOption) (token string, err error) {
+func (j *jsonWebToken) Generate(options ...ValueOption) (token string, err error) {
 	// 设置过期时间（例如：2小时后过期）
 	m, err := time.ParseDuration(j.expire)
 	if err != nil {
@@ -73,7 +79,7 @@ func (j *JWT) Generate(options ...ValueOption) (token string, err error) {
 }
 
 // Parse 验证token
-func (j *JWT) Parse(token string) (*Claims, error) {
+func (j *jsonWebToken) Parse(token string) (*Claims, error) {
 	if token == "" {
 		return nil, errors.New("token为空")
 	}
