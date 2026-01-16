@@ -25,7 +25,7 @@ func GetDefault() Conf {
 type Conf interface {
 	Mysql(field string) (*gorm.DB, error)
 	Redis(field string) (*redis.Client, error)
-	Token(field string) (*token.JWT, error)
+	Token(field string) (token.JWT, error)
 	Minio(field string) (*minio.Conn, error)
 	Email(field string) ([]mail.Client, error)
 
@@ -111,7 +111,7 @@ func (c *config) Redis(field string) (*redis.Client, error) {
 	}
 	return utils.RedisConnect(v.Address, v.Password, v.DB)
 }
-func (c *config) Token(field string) (*token.JWT, error) {
+func (c *config) Token(field string) (token.JWT, error) {
 	if v, ok := c.token[field]; ok {
 		return token.New(token.WithSecret([]byte(v.Key)), token.WithIssuer(v.Issuer), token.WithExpire(v.Expire)), nil
 	}
