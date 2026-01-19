@@ -97,6 +97,9 @@ func (s *service) subscribe() {
 	for {
 		select {
 		case msg := <-ch:
+			if !s.IsRunning() {
+				return
+			}
 			if l, ok := s.subscribeMap[msg.Channel]; ok {
 				for _, f := range l {
 					go f(s.ctx, msg.Channel, msg.Payload)
