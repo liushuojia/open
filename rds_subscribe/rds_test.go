@@ -15,9 +15,10 @@ func Test_Client(t *testing.T) {
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
+	ctx := context.Background()
 
 	s := New(rds)
-	if err := s.Start(); err != nil {
+	if err := s.Start(ctx); err != nil {
 		fmt.Println(err)
 		return
 	}
