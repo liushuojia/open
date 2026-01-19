@@ -38,5 +38,10 @@ func Test_Register(t *testing.T) {
 		return nil
 	})
 
-	Run()
+	Run(WithConfig(
+		"../conf/conf.daemon.default.toml",
+		"../conf/conf.daemon.mysql.toml",
+		"../conf/conf.daemon.redis.toml",
+		"../conf/conf.daemon.toml",
+	))
 }

@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/liushuojia/open/conf"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -29,7 +30,7 @@ var (
 type LifeCycle interface {
 	RegisterInit(fn ...func() error)    // 注册服务
 	RegisterDestroy(fn ...func() error) // 注销服务
-	Run()                               // 启动服务
+	Run(opts ...Option)                 // 启动服务
 }
 
 type lifeCycle struct {
@@ -104,12 +105,26 @@ func (lc *lifeCycle) destroy() error {
 }
 
 // Run 启动服务
-func (lc *lifeCycle) Run() {
+func (lc *lifeCycle) Run(opts ...Option) {
 	//defer func() {
 	//	if err := recover(); err != nil {
 	//		log.Println("panic recover", err)
 	//	}
 	//}()
+
+	var (
+		c   conf.Conf
+		err error
+	)
+	opt := loadOptions(opts...)
+	if len(opt.pathList) > 0 {
+		log.Println("start with config file ", opt.pathList)
+		c, err = conf.New(conf.WithFilePath(opt.pathList...))
+		if err != nil {
+			log.Fatalln(err.Error())
+			return
+		}
+	}
 
 	if err := lc.init(); err != nil {
 		log.Fatalln(err.Error())
@@ -121,5 +136,11 @@ func (lc *lifeCycle) Run() {
 	<-quit
 
 	_ = lc.destroy()
-	time.Sleep(time.Millisecond * 800)
+	time.Sleep(time.Millisecond * 300)
+
+	if c != nil {
+		log.Println("stop service")
+		_ = c.Stop()
+	}
+	time.Sleep(time.Millisecond * 300)
 }

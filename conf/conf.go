@@ -32,27 +32,31 @@ type Conf interface {
 	GetInt64ByField(fields ...string) (value int64, err error)
 	GetStringByField(fields ...string) (value string, err error)
 	GetByField(value any, fields ...string) (err error)
+
+	Stop() error
 }
 
 type config struct {
-	m     map[string]any
-	mysql map[string]*Mysql
-	redis map[string]*Redis
-	token map[string]*Token
-	minio map[string]*Minio
-	email map[string][]*Email
+	m map[string]any
+
+	mysql map[string]*gorm.DB
+	redis map[string]*redis.Client
+	token map[string]token.JWT
+	minio map[string]*minio.Conn
+	email map[string][]mail.Client
 }
 
 func New(options ...Option) (Conf, error) {
 	opts := loadOptions(options...)
 
 	c := &config{
-		m:     make(map[string]any),
-		mysql: make(map[string]*Mysql),
-		redis: make(map[string]*Redis),
-		token: make(map[string]*Token),
-		minio: make(map[string]*Minio),
-		email: make(map[string][]*Email),
+		m: make(map[string]any),
+
+		mysql: make(map[string]*gorm.DB),
+		redis: make(map[string]*redis.Client),
+		token: make(map[string]token.JWT),
+		minio: make(map[string]*minio.Conn),
+		email: make(map[string][]mail.Client),
 	}
 	for _, filePath := range opts.filePath {
 		mapValue := make(map[string]any)
@@ -74,19 +78,35 @@ func New(options ...Option) (Conf, error) {
 			return nil, errors.Join(errors.New(fmt.Sprintf("read file %s fail", filePath)), err)
 		}
 		for k, v := range dataValue.Mysql {
-			c.mysql[k] = v
+			conn, err := utils.MysqlConnect(v.Address, v.Username, v.Password, v.Database)
+			if err != nil {
+				return nil, err
+			}
+			c.mysql[k] = conn
 		}
 		for k, v := range dataValue.Redis {
-			c.redis[k] = v
+			conn, err := utils.RedisConnect(v.Address, v.Password, v.DB)
+			if err != nil {
+				return nil, err
+			}
+			c.redis[k] = conn
 		}
 		for k, v := range dataValue.Token {
-			c.token[k] = v
+			c.token[k] = token.New(token.WithSecret([]byte(v.Key)), token.WithIssuer(v.Issuer), token.WithExpire(v.Expire))
 		}
 		for k, v := range dataValue.Minio {
-			c.minio[k] = v
+			conn, err := minio.New().SetAddresses(v.Address).SetAccessKey(v.Access).SetSecretKey(v.Secret).SetUseSSL(v.UseSSL).Connect()
+			if err != nil {
+				return nil, err
+			}
+			c.minio[k] = conn
 		}
 		for k, v := range dataValue.Email {
-			c.email[k] = v
+			mailList := make([]mail.Client, 0)
+			for _, vv := range v {
+				mailList = append(mailList, mail.New(vv.Account, vv.Passwd, vv.Smtp, vv.Port))
+			}
+			c.email[k] = mailList
 		}
 	}
 
@@ -98,48 +118,34 @@ func New(options ...Option) (Conf, error) {
 }
 
 func (c *config) Mysql(field string) (*gorm.DB, error) {
-	v, ok := c.mysql[field]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("not found %s", field))
+	if v, ok := c.mysql[field]; ok {
+		return v, nil
 	}
-	return utils.MysqlConnect(v.Address, v.Username, v.Password, v.Database)
+	return nil, errors.New(fmt.Sprintf("not found %s", field))
 }
 func (c *config) Redis(field string) (*redis.Client, error) {
-	v, ok := c.redis[field]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("not found %s", field))
+	if v, ok := c.redis[field]; ok {
+		return v, nil
 	}
-	return utils.RedisConnect(v.Address, v.Password, v.DB)
+	return nil, errors.New(fmt.Sprintf("not found %s", field))
 }
 func (c *config) Token(field string) (token.JWT, error) {
 	if v, ok := c.token[field]; ok {
-		return token.New(token.WithSecret([]byte(v.Key)), token.WithIssuer(v.Issuer), token.WithExpire(v.Expire)), nil
+		return v, nil
 	}
 	return nil, errors.New(fmt.Sprintf("not found %s", field))
 }
 func (c *config) Minio(field string) (*minio.Conn, error) {
-	v, ok := c.minio[field]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("not found %s", field))
+	if v, ok := c.minio[field]; ok {
+		return v, nil
 	}
-
-	conn, err := minio.New().SetAddresses(v.Address).SetAccessKey(v.Access).SetSecretKey(v.Secret).SetUseSSL(v.UseSSL).Connect()
-	if err != nil {
-		return nil, err
-	}
-
-	return conn, nil
+	return nil, errors.New(fmt.Sprintf("not found %s", field))
 }
 func (c *config) Email(field string) ([]mail.Client, error) {
-	l, ok := c.email[field]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("not found %s", field))
+	if v, ok := c.email[field]; ok && len(v) > 0 {
+		return v, nil
 	}
-	mailList := make([]mail.Client, 0)
-	for _, v := range l {
-		mailList = append(mailList, mail.New(v.Account, v.Passwd, v.Smtp, v.Port))
-	}
-	return mailList, nil
+	return nil, errors.New(fmt.Sprintf("not found %s", field))
 }
 
 func (c *config) getByField(fields ...string) (value any, err error) {
@@ -197,4 +203,19 @@ func (c *config) GetByField(value any, fields ...string) (err error) {
 	}
 
 	return json.Unmarshal(j, &value)
+}
+
+func (c *config) Stop() error {
+	fmt.Println("clean service with conf")
+	for _, gormDB := range c.mysql {
+		if db, err := gormDB.DB(); err == nil {
+			_ = db.Close()
+		}
+	}
+	for _, redisDB := range c.redis {
+		if redisDB != nil {
+			_ = redisDB.Close()
+		}
+	}
+	return nil
 }
