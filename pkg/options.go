@@ -15,6 +15,7 @@ type Options struct {
 	pathList  []string // 配置文档
 	recover   bool     // panic recover
 	noWaiting bool     // 阻塞进程等待停止服务
+	log       string   // 日志文件名称
 }
 
 func WithConfig(path ...string) Option {
@@ -30,5 +31,10 @@ func WithRecover(recover bool) Option {
 func WithNoWaiting(noWaiting bool) Option {
 	return func(opts *Options) {
 		opts.noWaiting = noWaiting
+	}
+}
+func WithLog(l string) Option {
+	return func(opts *Options) {
+		opts.log = l
 	}
 }

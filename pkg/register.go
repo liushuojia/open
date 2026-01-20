@@ -114,6 +114,11 @@ func (lc *lifeCycle) Run(opts ...Option) {
 		err error
 	)
 	opt := loadOptions(opts...)
+
+	if opt.log != "" {
+		utils.InitializeLog(opt.log)
+	}
+
 	if len(opt.pathList) > 0 {
 		log.Println("start with config file ", opt.pathList)
 		c, err = conf.New(conf.WithFilePath(opt.pathList...))
@@ -158,8 +163,6 @@ func (lc *lifeCycle) Run(opts ...Option) {
 			}
 		}()
 	}
-
-	utils.InitializeLog("dev")
 
 	if err := lc.init(); err != nil {
 		log.Fatalln(err.Error())
