@@ -129,6 +129,8 @@ func (lc *lifeCycle) Run(opts ...Option) {
 		}()
 	}
 
+	utils.InitializeLog("dev")
+
 	if err := lc.init(); err != nil {
 		log.Fatalln(err.Error())
 		return
