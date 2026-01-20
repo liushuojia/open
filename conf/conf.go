@@ -32,6 +32,7 @@ type Conf interface {
 	GetInt64ByField(fields ...string) (value int64, err error)
 	GetStringByField(fields ...string) (value string, err error)
 	GetByField(value any, fields ...string) (err error)
+	GetMapByField(fields ...string) (map[string]any, error)
 
 	Stop() error
 }
@@ -203,6 +204,17 @@ func (c *config) GetByField(value any, fields ...string) (err error) {
 	}
 
 	return json.Unmarshal(j, &value)
+}
+func (c *config) GetMapByField(fields ...string) (map[string]any, error) {
+	v, err := c.getByField(fields...)
+	if err != nil {
+		return nil, err
+	}
+	mv, ok := v.(map[string]any)
+	if !ok {
+		return nil, errors.New("value is not map[string]any")
+	}
+	return mv, nil
 }
 
 func (c *config) Stop() error {

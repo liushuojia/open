@@ -5,7 +5,6 @@ dd = "dd"
 aa = 2
 cc = 3
 
-
 debug = true
 name = "quantify"
 apiPrefix = "/api/v1"

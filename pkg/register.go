@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	utils "github.com/liushuojia/open"
 	"github.com/liushuojia/open/conf"
+	"github.com/modern-go/reflect2"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -118,6 +120,34 @@ func (lc *lifeCycle) Run(opts ...Option) {
 		if err != nil {
 			log.Fatalln(err.Error())
 			return
+		}
+
+		if l, err := c.GetMapByField(); err == nil {
+			for k, v := range l {
+				typeString := reflect2.TypeOf(v).String()
+				if typeString == "string" {
+					_ = Set(k, v.(string))
+					continue
+				}
+
+				if s := "int"; len(typeString) >= len(s) && typeString[:len(s)] == s {
+					_ = Set(k, fmt.Sprintf("%d", v))
+					continue
+				}
+				if s := "uint"; len(typeString) >= len(s) && typeString[:len(s)] == s {
+					_ = Set(k, fmt.Sprintf("%d", v))
+					continue
+				}
+				if s := "float"; len(typeString) >= len(s) && typeString[:len(s)] == s {
+					_ = Set(k, fmt.Sprintf("%d", v))
+					continue
+				}
+
+				if s := "bool"; len(typeString) >= len(s) && typeString[:len(s)] == s {
+					_ = Set(k, fmt.Sprintf("%v", v))
+					continue
+				}
+			}
 		}
 	}
 
