@@ -1,13 +1,13 @@
 package pkg
 
 import (
-	"errors"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
+	utils "github.com/liushuojia/open"
 	"github.com/liushuojia/open/conf"
 	log "github.com/sirupsen/logrus"
 )
@@ -66,20 +66,20 @@ func (lc *lifeCycle) RegisterDestroy(fn ...func() error) {
 	lc.destroyFuncList = append(lc.destroyFuncList, fn...)
 }
 
-// Init 执行注册的初始化函数，顺序执行直到初始化函数返回error，并将error返回
+// Init 执行注册的初始化函数，执行是异步执行， 并不是顺序执行
 func (lc *lifeCycle) init() error {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 	lc.setStatus(LifeCycleStatusInit)
 
-	var err error
-	for _, fn := range lc.initFuncList {
-		if e := fn(); e != nil {
-			err = errors.Join(err, e)
-		}
-	}
+	//var err error
+	//for _, fn := range lc.initFuncList {
+	//	if e := fn(); e != nil {
+	//		err = errors.Join(err, e)
+	//	}
+	//}
 
-	return err
+	return utils.WaitError(lc.initFuncList...)
 }
 
 // Destroy 执行注册的Destroy函数，逆序执行所有Destroy函数，收集返回error聚合为errors返回
@@ -88,20 +88,20 @@ func (lc *lifeCycle) destroy() error {
 	defer lc.mu.Unlock()
 	lc.setStatus(LifeCycleStatusDestroy)
 
-	fns := make([]func() error, 0)
-	fns = append(fns, lc.destroyFuncList...)
-	for i, j := 0, len(fns)-1; i < j; i, j = i+1, j-1 {
-		fns[i], fns[j] = fns[j], fns[i]
-	}
+	//fns := make([]func() error, 0)
+	//fns = append(fns, lc.destroyFuncList...)
+	//for i, j := 0, len(fns)-1; i < j; i, j = i+1, j-1 {
+	//	fns[i], fns[j] = fns[j], fns[i]
+	//}
+	//
+	//var err error
+	//for _, fn := range fns {
+	//	if e := fn(); e != nil {
+	//		err = errors.Join(err, e)
+	//	}
+	//}
 
-	var err error
-	for _, fn := range fns {
-		if e := fn(); e != nil {
-			err = errors.Join(err, e)
-		}
-	}
-
-	return err
+	return utils.WaitError(lc.destroyFuncList...)
 }
 
 // Run 启动服务
@@ -146,7 +146,6 @@ func (lc *lifeCycle) Run(opts ...Option) {
 	time.Sleep(time.Millisecond * 300)
 
 	if c != nil {
-		log.Println("stop service")
 		_ = c.Stop()
 	}
 	time.Sleep(time.Millisecond * 300)
