@@ -14,12 +14,6 @@ import (
 	"github.com/liushuojia/open/token"
 )
 
-type (
-	RDS   *redis.Client
-	JWT   token.JWT
-	MINIO *minio.Conn
-)
-
 var defaultConfig Conf
 
 func SetDefault(c Conf) {

@@ -1,4 +1,4 @@
-package rds_subscribe
+package subscribe
 
 import (
 	"context"
@@ -17,7 +17,7 @@ func Test_Client(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	s := New(rds)
+	s := NewRds(rds)
 	if err := s.Start(ctx); err != nil {
 		fmt.Println(err)
 		return

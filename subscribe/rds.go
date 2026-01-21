@@ -1,4 +1,4 @@
-package rds_subscribe
+package subscribe
 
 import (
 	"context"
@@ -9,23 +9,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type CallBack func(ctx context.Context, channel, msg string)
+var _ Conn = (*rds)(nil)
 
-type Service interface {
-	// Start 启动服务
-	Start(ctx context.Context) error
-	Stop() error
-	// IsRunning 检查服务是否运行中
-	IsRunning() bool
-	// Register 注册回调
-	Register(channel, key string, callBack CallBack) error
-	// UnRegister 取消注册回调
-	UnRegister(channel, key string)
-}
-
-var _ Service = (*service)(nil)
-
-type service struct {
+type rds struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	rds          *redis.Client
@@ -35,15 +21,15 @@ type service struct {
 	subscribeMap map[string]map[string]CallBack
 }
 
-func New(rds *redis.Client) Service {
-	return &service{
-		rds:          rds,
+func NewRds(client *redis.Client) Conn {
+	return &rds{
+		rds:          client,
 		isRunning:    false,
 		subscribeMap: make(map[string]map[string]CallBack),
 	}
 }
 
-func (s *service) Start(ctx context.Context) error {
+func (s *rds) Start(ctx context.Context) error {
 	if s.rds == nil {
 		return errors.New("redis is nil")
 	}
@@ -60,13 +46,13 @@ func (s *service) Start(ctx context.Context) error {
 	go s.subscribe()
 	return nil
 }
-func (s *service) Stop() error {
+func (s *rds) Stop() error {
 	if s.IsRunning() {
 		s.cancel()
 	}
 	return nil
 }
-func (s *service) subscribe() {
+func (s *rds) subscribe() {
 	if s.isRunning {
 		return
 	}
@@ -110,10 +96,10 @@ func (s *service) subscribe() {
 		}
 	}
 }
-func (s *service) IsRunning() bool {
+func (s *rds) IsRunning() bool {
 	return s.isRunning
 }
-func (s *service) Register(channel, key string, callback CallBack) error {
+func (s *rds) Register(channel, key string, callback CallBack) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -130,7 +116,7 @@ func (s *service) Register(channel, key string, callback CallBack) error {
 	}
 	return nil
 }
-func (s *service) UnRegister(channel, key string) {
+func (s *rds) UnRegister(channel, key string) {
 	if _, ok := s.subscribeMap[channel]; !ok {
 		return
 	}
