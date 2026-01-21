@@ -5,12 +5,19 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+
 	utils "github.com/liushuojia/open"
 	mail "github.com/liushuojia/open/email"
 	"github.com/liushuojia/open/minio"
 	"github.com/liushuojia/open/token"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+)
+
+type (
+	RDS   *redis.Client
+	JWT   token.JWT
+	MINIO *minio.Conn
 )
 
 var defaultConfig Conf
@@ -192,7 +199,7 @@ func (c *config) GetStringByField(fields ...string) (value string, err error) {
 	}
 	return "", errors.New("field value is not number")
 }
-func (c *config) GetByField(value any, fields ...string) (err error) {
+func (c *config) GetByField(value any, fields ...string) error {
 	v, err := c.getByField(fields...)
 	if err != nil {
 		return err

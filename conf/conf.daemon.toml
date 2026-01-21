@@ -9,5 +9,4 @@ debug = true
 name = "quantify"
 apiPrefix = "/api/v1"
 port = 8080
-
 fileSharePath = "./share"
