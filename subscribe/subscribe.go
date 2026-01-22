@@ -2,8 +2,6 @@ package subscribe
 
 import "context"
 
-type CallBack func(ctx context.Context, channel, msg string)
-
 type Conn interface {
 	// Start 启动服务
 	Start(ctx context.Context) error
@@ -14,9 +12,13 @@ type Conn interface {
 	// IsRunning 检查服务是否运行中
 	IsRunning() bool
 
-	// Register 注册回调
-	Register(channel, key string, callBack CallBack) error
+	// Register 注册订阅
+	Register(callBack CallBack) error
 
-	// UnRegister 取消注册回调
-	UnRegister(channel, key string)
+	// UnRegister 注销订阅
+	UnRegister(callBack CallBack)
+
+	// Publish 发送消息
+	Publish(ctx context.Context, channel string, body []byte) error
+	publishExchange(ctx context.Context, exchange, key string, body []byte) error
 }
