@@ -21,7 +21,7 @@ type rds struct {
 
 	isRunning    bool
 	lock         sync.Mutex
-	subscribeMap sync.Map // sync.map[channel] => CallBack
+	subscribeMap sync.Map // sync.map[channel] => func(context.Context, string, []byte) error) error
 }
 
 func NewRds(client *redis.Client) Conn {
