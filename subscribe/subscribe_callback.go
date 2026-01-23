@@ -6,14 +6,19 @@ var _ CallBack = (*callBack)(nil)
 
 type CallBack interface {
 	FN(context.Context, string, []byte) error // 回调函数
-	Channel() string                          // 订阅 channel / exchange
-	Key() string                              // 订阅 key
-	Name() string                             // 注册 名称 唯一索引
+	Channel() string                          // 订阅 channel / queue
 }
 
 type callBack struct {
-	channel, key, name string
-	fn                 func(context.Context, string, []byte) error
+	channel, name string
+	fn            func(context.Context, string, []byte) error
+}
+
+func NewCallBack(channel string, fn func(context.Context, string, []byte) error) CallBack {
+	return &callBack{
+		channel: channel,
+		fn:      fn,
+	}
 }
 
 func (cb *callBack) FN(ctx context.Context, channel string, body []byte) error {
@@ -21,10 +26,4 @@ func (cb *callBack) FN(ctx context.Context, channel string, body []byte) error {
 }
 func (cb *callBack) Channel() string {
 	return cb.channel
-}
-func (cb *callBack) Key() string {
-	return cb.key
-}
-func (cb *callBack) Name() string {
-	return cb.name
 }

@@ -3,6 +3,7 @@ package subscribe
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/redis/go-redis/v9"
@@ -10,14 +11,6 @@ import (
 )
 
 var _ Conn = (*rds)(nil)
-
-func NewRdsCB(channel, name string, fn func(context.Context, string, []byte) error) CallBack {
-	return &callBack{
-		channel: channel,
-		name:    name,
-		fn:      fn,
-	}
-}
 
 type rds struct {
 	ctx    context.Context
@@ -28,7 +21,7 @@ type rds struct {
 
 	isRunning    bool
 	lock         sync.Mutex
-	subscribeMap sync.Map // sync.map[channel] => []CallBack
+	subscribeMap sync.Map // sync.map[channel] => CallBack
 }
 
 func NewRds(client *redis.Client) Conn {
@@ -39,19 +32,18 @@ func NewRds(client *redis.Client) Conn {
 }
 
 func (s *rds) Start(ctx context.Context) error {
-	if s.rds == nil {
-		return errors.New("redis is nil")
-	}
-
 	if s.isRunning {
 		return nil
 	}
-
+	if s.rds == nil {
+		return errors.New("redis is nil")
+	}
 	s.ctx, s.cancel = context.WithCancel(ctx)
-	_ = s.Register(NewRdsCB("ping", "key", func(ctx context.Context, channel string, body []byte) error {
-		log.Println("PONG", channel, string(body))
+
+	_ = s.Register("ping", func(ctx context.Context, channel string, body []byte) error {
+		fmt.Println(channel, "pong", string(body))
 		return nil
-	}))
+	})
 
 	go s.subscribe()
 	return nil
@@ -79,102 +71,65 @@ func (s *rds) subscribe() {
 		}
 		return true
 	})
+	if len(channelList) <= 0 {
+		channelList = append(channelList, "ping")
+	}
 
 	log.Println("[redis] subscribe channel:", channelList)
 	s.sub = s.rds.Subscribe(s.ctx, channelList...)
 
-	ch := s.sub.Channel()
-	defer func() {
-		l := make([]string, 0)
-		s.subscribeMap.Range(func(key, value any) bool {
-			if k, ok := key.(string); ok {
-				l = append(l, k)
-			}
-			return true
-		})
-		log.Println("[redis] close subscribe", l)
-		_ = s.sub.Close()
-	}()
-
 	for {
 		select {
-		case msg := <-ch:
+		case msg := <-s.sub.Channel():
 			if vv, ok := s.subscribeMap.Load(msg.Channel); ok {
-				if l, ok := vv.([]CallBack); ok {
-					for _, cb := range l {
-						go cb.FN(s.ctx, msg.Channel, []byte(msg.Payload))
-					}
+				if fn, ok := vv.(func(ctx context.Context, channel string, body []byte) error); ok {
+					go fn(s.ctx, msg.Channel, []byte(msg.Payload))
 				}
 			}
 		case <-s.ctx.Done():
-			s.lock.Lock()
-			s.isRunning = false
-			s.lock.Unlock()
-			return
+			goto END
 		}
 	}
+
+END:
+	l := make([]string, 0)
+	s.subscribeMap.Range(func(key, value any) bool {
+		if k, ok := key.(string); ok {
+			l = append(l, k)
+		}
+		return true
+	})
+	log.Println("[redis] close subscribe", l)
 }
 func (s *rds) IsRunning() bool {
 	return s.isRunning
 }
-func (s *rds) Register(cb CallBack) error {
-	if lv, ok := s.subscribeMap.Load(cb.Channel()); ok {
-		if l, ok := lv.([]CallBack); ok {
-			cbList := make([]CallBack, 0)
-			for _, v := range l {
-				if v.Name() == cb.Name() {
-					continue
-				}
-				cbList = append(cbList, v)
-			}
-			cbList = append(cbList, cb)
-			s.subscribeMap.Store(cb.Channel(), cbList)
-			return nil
-		}
+func (s *rds) Register(channel string, fn func(context.Context, string, []byte) error) error {
+	if _, ok := s.subscribeMap.Load(channel); ok {
+		s.subscribeMap.Store(channel, fn)
+		return nil
 	}
 
-	s.subscribeMap.Store(cb.Channel(), []CallBack{
-		cb,
-	})
+	s.subscribeMap.Store(channel, fn)
 	if s.isRunning && s.sub != nil {
-		log.Println("[redis] subscribe channel:", cb.Channel())
-		return s.sub.Subscribe(s.ctx, cb.Channel())
+		log.Println("[redis] subscribe channel:", channel)
+		return s.sub.Subscribe(s.ctx, channel)
 	}
 	return nil
 }
-func (s *rds) UnRegister(cb CallBack) {
-	lv, ok := s.subscribeMap.Load(cb.Channel())
-	if !ok {
+func (s *rds) UnRegister(channel string) {
+	if _, ok := s.subscribeMap.LoadAndDelete(channel); !ok {
 		return
 	}
-
-	l, ok := lv.([]CallBack)
-	if !ok {
-		return
-	}
-
-	cbList := make([]CallBack, 0)
-	for _, v := range l {
-		if v.Name() == cb.Name() {
-			continue
-		}
-		cbList = append(cbList, v)
-	}
-	if len(cbList) > 0 {
-		s.subscribeMap.Store(cb.Channel(), cbList)
-		return
-	}
-
-	s.subscribeMap.Delete(cb.Channel())
 	if s.isRunning && s.sub != nil {
-		log.Println("[redis] unsubscribe channel:", cb.Channel())
-		_ = s.sub.Unsubscribe(s.ctx, cb.Channel())
+		log.Println("[redis] unsubscribe channel:", channel)
+		_ = s.sub.Unsubscribe(s.ctx, channel)
 	}
 }
 
 func (s *rds) Publish(ctx context.Context, channel string, body []byte) error {
 	return s.rds.Publish(ctx, channel, body).Err()
 }
-func (s *rds) publishExchange(ctx context.Context, exchange, key string, body []byte) error {
+func (s *rds) PublishExchange(ctx context.Context, exchange, key string, body []byte) error {
 	return s.Publish(ctx, exchange, body)
 }

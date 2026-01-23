@@ -2,14 +2,6 @@ package subscribe
 
 //import (
 //	"context"
-//	"fmt"
-//	"time"
-//
-//	"github.com/streadway/amqp"
-//)
-//
-//import (
-//	"context"
 //	"errors"
 //	"fmt"
 //	"sync"
@@ -26,81 +18,37 @@ package subscribe
 //
 //var _ Conn = (*rmq)(nil)
 //
+//func NewRmqCB(queue, name string, fn func(context.Context, string, []byte) error) CallBack {
+//	return &callBack{
+//		channel: queue,
+//		name:    name,
+//		fn:      fn,
+//	}
+//}
+//
 //type rmq struct {
 //	ctx    context.Context
 //	cancel context.CancelFunc
 //
-//	url        string
-//	connection *amqp.Connection
-//	channel    *amqp.Channel
+//	url           string
+//	connection    *amqp.Connection
+//	notifyConnect chan struct{}    // 连接成功通知
+//	notifyClose   chan *amqp.Error // 异常关闭通知
 //
-//	errChan       chan error    // 全局错误通道
-//	notifyConnect chan struct{} // 连接成功通知
-//	isRunning     bool
-//	lock          sync.Mutex
-//	subscribeMap  map[string]map[string]CallBack
+//	channelCancel sync.Map // 订阅后单独取消
+//
+//	isRunning bool
+//	lock      sync.Mutex
+//
+//	subscribeMap sync.Map // sync.map[channel] => []CallBack
 //}
 //
 //func NewRmq(user, password, host string, port int, vhost string) Conn {
 //	return &rmq{
-//		url:          fmt.Sprintf("amqp://%s:%s@%s:%d/%s", user, password, host, port, vhost),
-//		isRunning:    false,
-//		errChan:      make(chan error, 1),
-//		subscribeMap: make(map[string]map[string]CallBack),
-//	}
-//}
-//
-//// monitorConnection 监控连接状态，断开时触发重连
-//func (s *rmq) monitorConnection() {
-//	var err error
-//	for {
-//		select {
-//		case err := <-s.errChan: // 通道断开
-//			if err == nil {
-//				goto loop
-//			}
-//			log.Println("[RabbitMQ]", "channel 断开重连")
-//			if !s.connection.IsClosed() {
-//				goto reConnect
-//			}
-//			goto resetChannel
-//		case <-s.connection.NotifyClose(make(chan *amqp.Error, 1)): //连接断开
-//			goto reConnect
-//		case <-s.ctx.Done():
-//			goto end
-//		}
-//	reConnect:
-//		s.init()
-//		if err := s.connect(); err != nil {
-//			log.Printf("重连失败: %v", err)
-//			goto loop
-//		}
-//		goto resetChannel
-//	resetChannel:
-//		if !s.connection.IsClosed() {
-//			goto reConnect
-//		}
-//		s.channel, err = s.connection.Channel()
-//		if err == nil {
-//			// 监控信道
-//			go s.monitorChannel()
-//			// 重新订阅
-//			go s.subscribe()
-//		}
-//		goto loop
-//	loop:
-//		time.Sleep(reconnectDelay)
-//	}
-//end:
-//}
-//
-//// monitorChannel 监控信道
-//func (s *rmq) monitorChannel() {
-//	select {
-//	case err := <-s.channel.NotifyClose(make(chan *amqp.Error, 1)):
-//		log.Printf("信道关闭: %v", err)
-//		s.errChan <- errors.New("channel closed " + err.Error())
-//	case <-s.ctx.Done():
+//		url:           fmt.Sprintf("amqp://%s:%s@%s:%d/%s", user, password, host, port, vhost),
+//		isRunning:     false,
+//		notifyConnect: make(chan struct{}),
+//		notifyClose:   make(chan *amqp.Error),
 //	}
 //}
 //
@@ -114,18 +62,42 @@ package subscribe
 //	s.lock.Lock()
 //	s.isRunning = true
 //	s.lock.Unlock()
+//
+//	// 这个必须在这里重新初始化
+//	s.notifyClose = make(chan *amqp.Error)
+//	s.connection.NotifyClose(s.notifyClose)
+//	close(s.notifyConnect)
 //	return nil
+//}
+//func (s *rmq) connectLoop() {
+//	i := 1
+//	for {
+//		if !s.IsRunning() {
+//			log.Println("[rabbitMQ]", "test to connect")
+//			if err := s.connect(); err != nil {
+//				log.Println("[rabbitMQ]", i, err.Error(), "Failed to connect rabbitMQ. Retrying...")
+//				i++
+//				time.Sleep(reconnectDelay)
+//			} else {
+//				i = 1
+//			}
+//		}
+//		select {
+//		case <-s.ctx.Done():
+//			goto END
+//		case <-s.notifyClose:
+//			s.init()
+//		}
+//	}
+//END:
+//	fmt.Println("[rabbitMQ]", "close")
 //}
 //func (s *rmq) init() {
 //	s.lock.Lock()
-//	defer s.lock.Unlock()
 //	s.isRunning = false
-//	s.notifyConnect = make(chan struct{})
+//	s.lock.Unlock()
 //
-//	// 关闭旧连接/信道（防止资源泄漏）
-//	if s.channel != nil {
-//		_ = s.channel.Close()
-//	}
+//	s.notifyConnect = make(chan struct{})
 //	if s.connection != nil && !s.connection.IsClosed() {
 //		_ = s.connection.Close()
 //	}
@@ -137,27 +109,24 @@ package subscribe
 //	}
 //
 //	s.ctx, s.cancel = context.WithCancel(ctx)
-//	_ = s.Register("ping", "key", func(ctx context.Context, channel string, body []byte) error {
+//	_ = s.Register(NewRmqCB("ping", "key", func(ctx context.Context, channel string, body []byte) error {
 //		log.Println("PONG", channel, string(body))
 //		return nil
-//	})
+//	}))
 //
 //	log.Println("[rabbitMQ]", "connect rabbitMQ")
 //	s.init()
 //
-//	var err error
-//	if err = s.connect(); err != nil {
+//	if err := s.connect(); err != nil {
 //		return errors.New("rabbitMQ connect fail")
 //	}
-//	if s.channel, err = s.connection.Channel(); err != nil {
-//		return errors.New("rabbitMQ get channel fail")
-//	}
+//
+//	// 监控
+//	go s.connectLoop()
 //
 //	// 订阅
 //	go s.subscribe()
 //
-//	// 监控
-//	go s.monitorConnection()
 //	return nil
 //}
 //func (s *rmq) Stop() error {
@@ -168,171 +137,189 @@ package subscribe
 //	return nil
 //}
 //func (s *rmq) subscribe() {
-//	if s.isRunning {
+//	if !s.IsRunning() {
 //		return
 //	}
 //
 //	channelList := make([]string, 0)
-//	for channel := range s.subscribeMap {
-//		channelList = append(channelList, channel)
-//	}
+//	s.subscribeMap.Range(func(key, value any) bool {
+//		if channel, ok := key.(string); ok {
+//			channelList = append(channelList, channel)
+//			go s.subscribeQueue(channel)
+//		}
+//		return true
+//	})
+//
 //	if len(channelList) > 0 {
 //		if err := s.CreateQueue(channelList...); err != nil {
+//			log.Println("[rabbitMQ] create Queue fail err:", err.Error())
 //			return
 //		}
 //	}
-//
-//	/*
-//		log.Println("[rabbitMQ] subscribe channel:", channelList)
-//		s.sub = s.rds.Subscribe(s.ctx, channelList...)
-//
-//		var (
-//			ch = s.sub.Channel()
-//		)
-//		defer func() {
-//			l := make([]string, 0)
-//			for channel := range s.subscribeMap {
-//				l = append(l, channel)
-//			}
-//			log.Println("[redis] close subscribe", l)
-//			_ = s.sub.Close()
-//		}()
-//		for {
-//			select {
-//			case msg := <-ch:
-//				if l, ok := s.subscribeMap[msg.Channel]; ok {
-//					for _, f := range l {
-//						go f(s.ctx, msg.Channel, msg.Payload)
-//					}
-//				}
-//			case <-s.ctx.Done():
-//				s.lock.Lock()
-//				s.isRunning = false
-//				s.lock.Unlock()
-//				return
-//			}
-//		}
-//	*/
 //}
 //func (s *rmq) IsRunning() bool {
 //	return s.isRunning
 //}
-//func (s *rmq) Register(channel, key string, callback CallBack) error {
+//func (s *rmq) Register(cb CallBack) error {
 //
-//	//s.lock.Lock()
-//	//defer s.lock.Unlock()
-//	//
-//	//if v, ok := s.subscribeMap[channel]; ok {
-//	//	if _, ok := v[key]; ok {
-//	//		s.subscribeMap[channel][key] = callback
-//	//	}
-//	//	return nil
-//	//}
-//	//
-//	//s.subscribeMap[channel] = make(map[string]CallBack)
-//	//s.subscribeMap[channel][key] = callback
-//	//if s.isRunning {
-//	//	log.Println("[redis] subscribe channel:", channel)
-//	//	return s.sub.Subscribe(s.ctx, channel)
-//	//}
+//	if lv, ok := s.subscribeMap.Load(cb.Channel()); ok {
+//		if l, ok := lv.([]CallBack); ok {
+//			cbList := make([]CallBack, 0)
+//			for _, v := range l {
+//				if v.Name() == cb.Name() {
+//					continue
+//				}
+//				cbList = append(cbList, v)
+//			}
+//			cbList = append(cbList, cb)
+//			s.subscribeMap.Store(cb.Channel(), cbList)
+//			return nil
+//		}
+//	}
 //
+//	s.subscribeMap.Store(cb.Channel(), []CallBack{
+//		cb,
+//	})
+//
+//	if s.IsRunning() && s.connection != nil {
+//		log.Println("[subscribe] rabbitMQ channel:", cb.Channel())
+//		s.subscribeQueue(cb.Channel())
+//	}
 //	return nil
 //}
-//func (s *rmq) UnRegister(channel, key string) {
-//	/*
-//		if _, ok := s.subscribeMap[channel]; !ok {
-//			return
-//		}
+//func (s *rmq) UnRegister(cb CallBack) {
+//	lv, ok := s.subscribeMap.Load(cb.Channel())
+//	if !ok {
+//		return
+//	}
 //
-//		s.lock.Lock()
-//		defer s.lock.Unlock()
+//	l, ok := lv.([]CallBack)
+//	if !ok {
+//		return
+//	}
 //
-//		delete(s.subscribeMap[channel], key)
-//		if len(s.subscribeMap[channel]) <= 0 && s.isRunning {
-//			delete(s.subscribeMap, channel)
-//			log.Println("[redis] unsubscribe channel:", channel)
-//			_ = s.sub.Unsubscribe(s.ctx, channel)
+//	cbList := make([]CallBack, 0)
+//	for _, v := range l {
+//		if v.Name() == cb.Name() {
+//			continue
 //		}
-//	*/
+//		cbList = append(cbList, v)
+//	}
+//	if len(cbList) > 0 {
+//		s.subscribeMap.Store(cb.Channel(), cbList)
+//		return
+//	}
+//
+//	s.subscribeMap.Delete(cb.Channel())
+//	if s.isRunning && s.connection != nil {
+//		log.Println("[redis] unsubscribe channel:", cb.Channel())
+//		//_ = s.sub.Unsubscribe(s.ctx, cb.Channel())
+//		if v, ok := s.channelCancel.LoadAndDelete(cb.Channel()); ok {
+//			if vv, ok := v.(context.CancelFunc); ok && vv != nil {
+//				vv()
+//			}
+//		}
+//	}
 //}
 //
-//func (s *rmq) SubscribeQueue(callback CallBack, name string) {
+//func (s *rmq) subscribeQueue(channel string) {
 //START:
-//	channel, err := s.connection.Channel()
+//	log.Println("[subscribe]", "rabbitMQ", "queue", channel, "start")
+//
+//	c, err := s.connection.Channel()
 //	if err != nil {
-//		log.Println("channel", "queue", name, err)
+//		log.Println("[subscribe]", "get", "Channel", "err:", err)
 //		time.Sleep(reconnectDelay)
 //		goto START
 //	}
 //
-//	notifyClose := make(chan *amqp.Error)
-//	channel.NotifyClose(notifyClose)
-//
-//	log.Println("[subscribe]", "rabbitMQ", "queue", name, "start")
-//	if err := s.CreateQueue(name); err != nil {
-//		log.Println("CreateQueue", "queue", name, err)
-//		time.Sleep(reconnectDelay)
-//		goto START
-//	}
-//
-//	message, err := channel.Consume(name, "", false, false, false, false, nil)
+//	message, err := c.Consume(channel, "", false, false, false, false, nil)
 //	if err != nil {
-//		log.Println("Consume", "queue", name, err)
+//		log.Println("[subscribe]", "Consume", "queue", channel, err)
 //		time.Sleep(reconnectDelay)
 //		goto START
 //	}
+//
+//	cancelCtx, cancel := context.WithCancel(s.ctx)
+//	s.channelCancel.Store(channel, cancel)
 //
 //	for {
 //		select {
 //		case d, msgIsOpen := <-message:
+//			//if vv, ok := s.subscribeMap.Load(d.); ok {
+//			//	if l, ok := vv.([]CallBack); ok {
+//			//		for _, cb := range l {
+//			//			go cb.FN(s.ctx, msg.Channel, []byte(msg.Payload))
+//			//		}
+//			//	}
+//			//}
 //			if !msgIsOpen {
 //				break
 //			}
-//			if err := callback(s.ctx, d.RoutingKey, d.Body); err == nil {
-//				_ = d.Ack(true)
+//
+//			v, ok := s.subscribeMap.Load(channel)
+//			if !ok {
+//				break
 //			}
-//		case <-notifyClose:
-//			log.Println("[subscribe]", "rabbitMQ", "queue", name, "restart")
+//
+//			l, ok := v.([]CallBack)
+//			if !ok {
+//				break
+//			}
+//
+//			for _, cb := range l {
+//				if err := cb.FN(s.ctx, d.RoutingKey, d.Body); err == nil {
+//					_ = d.Ack(true)
+//				}
+//			}
+//		case <-c.NotifyClose(make(chan *amqp.Error)):
+//			log.Println("[subscribe]", "rabbitMQ", "channel", channel, "restart")
+//			goto START
+//		case <-s.notifyClose:
+//			log.Println("notifyClose")
+//			time.Sleep(reconnectDelay)
 //			goto START
 //		case <-s.ctx.Done():
+//			goto END
+//		case <-cancelCtx.Done():
 //			goto END
 //		}
 //	}
 //END:
-//	channel.Close()
-//	log.Println("[subscribe]", "rabbitMQ", "queue", name, "end")
-//}
-//func (s *rmq) CreateQueue(nameList ...string) error {
-//	// 队列不存在创建
-//	fmt.Println(nameList)
-//	for _, name := range nameList {
-//		_, err := s.channel.QueueDeclare(
-//			name,  // name 队列名称 为空时，名称随机
-//			true,  // durable 是否持久化
-//			false, // delete when unused 是否自动删除
-//			false, // exclusive 是否设置排他
-//			false, // no-wait 是否非阻塞
-//			nil,   // arguments 参数
-//		)
-//		return err
-//	}
-//	return nil
+//	c.Close()
+//	log.Println("[subscribe]", "rabbitMQ", "queue", channel, "end")
 //}
 //
-//func (s *rmq) Publish(ctx context.Context, channel string, body []byte) error {
-//	return s.channel.Publish(
-//		"",      // exchange
-//		channel, // name
-//		false,   // mandatory
-//		false,   // immediate
+///*
+//	publish
+//*/
+//
+//func (s *rmq) Publish(ctx context.Context, queue string, body []byte) error {
+//	channel, err := s.connection.Channel()
+//	if err != nil {
+//		return err
+//	}
+//	defer channel.Close()
+//
+//	return channel.Publish(
+//		"",    // exchange
+//		queue, // queue
+//		false, // mandatory
+//		false, // immediate
 //		amqp.Publishing{
 //			ContentType: "text/plain",
 //			Body:        body,
 //		},
 //	)
 //}
-//func (s *rmq) publishExchange(ctx context.Context, exchange, key string, body []byte) error {
-//	return s.channel.Publish(
+//func (s *rmq) PublishExchange(ctx context.Context, exchange, key string, body []byte) error {
+//	channel, err := s.connection.Channel()
+//	if err != nil {
+//		return err
+//	}
+//	defer channel.Close()
+//
+//	return channel.Publish(
 //		exchange, // exchange
 //		key,      // routing key
 //		false,    // mandatory
@@ -342,4 +329,121 @@ package subscribe
 //			Body:        body,
 //		},
 //	)
+//}
+//
+///*
+//	amqp.ExchangeFanout
+//	amqp.ExchangeDirect
+//	amqp.ExchangeTopic
+//	amqp.ExchangeHeaders
+//
+//	topic 举例：
+//	item.# ：能够匹配 item.insert.abc 或者 item.insert
+//	item.* ：只能匹配 item.insert
+//*/
+//
+//func (s *rmq) CreateExchangeAction(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
+//	channel, err := s.connection.Channel()
+//	if err != nil {
+//		return err
+//	}
+//	defer channel.Close()
+//
+//	return channel.ExchangeDeclare(
+//		name,       // name
+//		kind,       // type
+//		durable,    // durable
+//		autoDelete, // auto-deleted
+//		internal,   // internal true表示这个exchange不可以被client用来推送消息，仅用来进行exchange和exchange之间的绑定
+//		noWait,     // no-wait
+//		args,       // arguments
+//	)
+//}
+//func (s *rmq) CreateQueueAction(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (queue amqp.Queue, err error) {
+//	channel, err := s.connection.Channel()
+//	if err != nil {
+//		return queue, err
+//	}
+//	defer channel.Close()
+//
+//	return channel.QueueDeclare(
+//		name,       // name 队列名称 为空时，名称随机
+//		durable,    // durable 是否持久化
+//		autoDelete, // delete when unused 是否自动删除
+//		exclusive,  // exclusive 是否设置排他
+//		noWait,     // no-wait 是否非阻塞
+//		args,       // arguments 参数
+//	)
+//}
+//
+//func (s *rmq) CreateExchange(name, kind string) error {
+//	return s.CreateExchangeAction(
+//		name,  // name
+//		kind,  // type
+//		true,  // durable
+//		false, // auto-deleted
+//		false, // internal true表示这个exchange不可以被client用来推送消息，仅用来进行exchange和exchange之间的绑定
+//		false, // no-wait
+//		nil,   // arguments
+//	)
+//}
+//func (s *rmq) CreateExchangeBind(name string, exchange string, routingKeys ...string) error {
+//	channel, err := s.connection.Channel()
+//	if err != nil {
+//		return err
+//	}
+//	defer channel.Close()
+//
+//	for _, k := range routingKeys {
+//		err := channel.ExchangeBind(
+//			name,     // name
+//			k,        // routing key
+//			exchange, // exchange
+//			false,
+//			nil,
+//		)
+//		if err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}
+//
+//func (s *rmq) CreateQueue(nameList ...string) error {
+//	// 队列不存在创建
+//	for _, name := range nameList {
+//		_, err := s.CreateQueueAction(
+//			name,  // name 队列名称 为空时，名称随机
+//			true,  // durable 是否持久化
+//			false, // delete when unused 是否自动删除
+//			false, // exclusive 是否设置排他
+//			false, // no-wait 是否非阻塞
+//			nil,   // arguments 参数
+//		)
+//		if err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}
+//func (s *rmq) CreateQueueBind(name string, exchange string, routingKeys ...string) error {
+//	channel, err := s.connection.Channel()
+//	if err != nil {
+//		return err
+//	}
+//	defer channel.Close()
+//
+//	for _, k := range routingKeys {
+//		err := channel.QueueBind(
+//			name,     // queue name
+//			k,        // routing key
+//			exchange, // exchange
+//			false,
+//			nil,
+//		)
+//		if err != nil {
+//			return err
+//		}
+//	}
+//	return nil
 //}

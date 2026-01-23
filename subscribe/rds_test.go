@@ -23,55 +23,49 @@ func Test_rds_client(t *testing.T) {
 		return
 	}
 
-	_ = s.Register(NewRdsCB("aaa", "key_add", func(ctx context.Context, channel string, body []byte) error {
+	time.Sleep(2 * time.Second)
+	_ = s.Register("aaa", func(ctx context.Context, channel string, body []byte) error {
 		fmt.Println("aaa", channel, string(body))
 		return nil
-	}))
-	_ = s.Register(NewRdsCB("bbb", "key_add", func(ctx context.Context, channel string, body []byte) error {
+	})
+	_ = s.Register("bbb", func(ctx context.Context, channel string, body []byte) error {
 		fmt.Println("bbb", channel, string(body))
 		return nil
-	}))
+	})
+
 	go func() {
 		for {
-			time.Sleep(5 * time.Second)
-			_ = s.Publish(context.Background(), "ping", []byte(time.Now().Format("20060102 150405")+" pp"))
-			_ = s.Publish(context.Background(), "get", []byte(time.Now().Format("20060102 150405")+" get"))
+			time.Sleep(1 * time.Second)
+			_ = s.Publish(context.Background(), "aaa", []byte(time.Now().Format("20060102 150405")+" pp"))
+			time.Sleep(1 * time.Second)
+			_ = s.Publish(context.Background(), "bbb", []byte(time.Now().Format("20060102 150405")+" get"))
 		}
-
 	}()
+	time.Sleep(60 * time.Second)
+	panic("")
+
 	go func() {
 		time.Sleep(10 * time.Second)
 		//cancel()
-		_ = s.Register(NewRdsCB("ping", "key_add", func(ctx context.Context, channel string, body []byte) error {
+		_ = s.Register("ping", func(ctx context.Context, channel string, body []byte) error {
 			fmt.Println("PONG_add", channel, string(body))
 			return nil
-		}))
-		_ = s.Register(NewRdsCB("get", "key", func(ctx context.Context, channel string, body []byte) error {
+		})
+		_ = s.Register("get", func(ctx context.Context, channel string, body []byte) error {
 			fmt.Println("PONG_get", channel, string(body))
 			return nil
-		}))
+		})
 
 		time.Sleep(20 * time.Second)
-		s.UnRegister(NewRdsCB("ping", "key_add", func(ctx context.Context, channel string, body []byte) error {
-			fmt.Println("PONG_get", channel, string(body))
-			return nil
-		}))
+		s.UnRegister("ping")
 		time.Sleep(10 * time.Second)
-		s.UnRegister(NewRdsCB("get", "key", func(ctx context.Context, channel string, body []byte) error {
-			fmt.Println("PONG_get", channel, string(body))
-			return nil
-		}))
+		s.UnRegister("get")
 	}()
 
-	go func() {
-		time.Sleep(8 * time.Second)
-		s.Stop()
-	}()
+	time.Sleep(40 * time.Second)
+	s.Stop()
 
-	time.Sleep(time.Minute)
-	_ = s.Stop()
-
-	time.Sleep(10 * time.Second)
+	time.Sleep(60 * time.Second)
 }
 func Test_rds_client1(t *testing.T) {
 	rds, err := utils.RedisConnect("192.168.2.3:6379", "liushuojia", 30)
@@ -86,18 +80,18 @@ func Test_rds_client1(t *testing.T) {
 		return
 	}
 
-	_ = s.Register(NewRdsCB("aaa", "a001", func(ctx context.Context, channel string, body []byte) error {
+	_ = s.Register("aaa", func(ctx context.Context, channel string, body []byte) error {
 		fmt.Println(channel, "a001", string(body))
 		return nil
-	}))
-	_ = s.Register(NewRdsCB("aaa", "a002", func(ctx context.Context, channel string, body []byte) error {
+	})
+	_ = s.Register("aaa", func(ctx context.Context, channel string, body []byte) error {
 		fmt.Println(channel, "a002", string(body))
 		return nil
-	}))
-	_ = s.Register(NewRdsCB("aaa", "a002", func(ctx context.Context, channel string, body []byte) error {
+	})
+	_ = s.Register("aaa", func(ctx context.Context, channel string, body []byte) error {
 		fmt.Println(channel, "a001----00001", string(body))
 		return nil
-	}))
+	})
 
 	go func() {
 		for {
@@ -107,13 +101,9 @@ func Test_rds_client1(t *testing.T) {
 	}()
 	go func() {
 		time.Sleep(5 * time.Second)
-		s.UnRegister(NewRdsCB("aaa", "a001", func(ctx context.Context, channel string, body []byte) error {
-			return nil
-		}))
+		s.UnRegister("aaa")
 		time.Sleep(5 * time.Second)
-		s.UnRegister(NewRdsCB("aaa", "a002", func(ctx context.Context, channel string, body []byte) error {
-			return nil
-		}))
+		s.UnRegister("aaa")
 	}()
 
 	time.Sleep(time.Minute)

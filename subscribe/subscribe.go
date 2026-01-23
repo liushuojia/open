@@ -9,16 +9,13 @@ type Conn interface {
 	// Stop 停止服务
 	Stop() error
 
-	// IsRunning 检查服务是否运行中
-	IsRunning() bool
-
 	// Register 注册订阅
-	Register(callBack CallBack) error
+	Register(channel string, fn func(context.Context, string, []byte) error) error
 
 	// UnRegister 注销订阅
-	UnRegister(callBack CallBack)
+	UnRegister(channel string)
 
 	// Publish 发送消息
 	Publish(ctx context.Context, channel string, body []byte) error
-	publishExchange(ctx context.Context, exchange, key string, body []byte) error
+	PublishExchange(ctx context.Context, exchange, key string, body []byte) error
 }
