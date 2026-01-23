@@ -144,7 +144,7 @@ func (s *rmq) subscribe() {
 	})
 
 	if len(channelList) > 0 {
-		if err := s.CreateQueue(channelList...); err != nil {
+		if err := s.CreateQueueAction(channelList...); err != nil {
 			log.Println("[rabbitMQ] create Queue fail err:", err.Error())
 			return
 		}
@@ -161,7 +161,7 @@ func (s *rmq) IsRunning() bool {
 func (s *rmq) Register(channel string, fn func(context.Context, string, []byte) error) error {
 	if _, ok := s.subscribeMap.Load(channel); !ok {
 		if s.IsRunning() && s.connection != nil {
-			if err := s.CreateQueue(channel); err != nil {
+			if err := s.CreateQueueAction(channel); err != nil {
 				log.Println("[rabbitMQ] create Queue fail err:", err.Error())
 				return err
 			}
@@ -172,17 +172,17 @@ func (s *rmq) Register(channel string, fn func(context.Context, string, []byte) 
 	s.subscribeMap.Store(channel, fn)
 	return nil
 }
-func (s *rmq) UnRegister(channel string) {
-	if _, ok := s.subscribeMap.LoadAndDelete(channel); !ok {
-		return
-	}
-
-	if s.isRunning && s.connection != nil {
-		log.Println("[subscribe] unsubscribe channel:", channel)
-		//_ = s.sub.Unsubscribe(s.ctx, cb.Channel())
-		if v, ok := s.channelCancel.LoadAndDelete(channel); ok {
-			if vv, ok := v.(context.CancelFunc); ok && vv != nil {
-				vv()
+func (s *rmq) UnRegister(channels ...string) {
+	for _, channel := range channels {
+		if _, ok := s.subscribeMap.LoadAndDelete(channel); !ok {
+			return
+		}
+		if s.isRunning && s.connection != nil {
+			log.Println("[subscribe] unsubscribe channel:", channel)
+			if v, ok := s.channelCancel.LoadAndDelete(channel); ok {
+				if vv, ok := v.(context.CancelFunc); ok && vv != nil {
+					vv()
+				}
 			}
 		}
 	}
@@ -306,7 +306,34 @@ func (s *rmq) PublishExchange(ctx context.Context, exchange, key string, body []
 	item.* ：只能匹配 item.insert
 */
 
-func (s *rmq) CreateExchangeAction(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
+func (s *rmq) CreateQueueAction(nameList ...string) error {
+	// 队列不存在创建
+	for _, name := range nameList {
+		_, err := s.CreateQueue(
+			name,  // name 队列名称 为空时，名称随机
+			true,  // durable 是否持久化
+			false, // delete when unused 是否自动删除
+			false, // exclusive 是否设置排他
+			false, // no-wait 是否非阻塞
+			nil,   // arguments 参数
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+/*
+CreateExchange
+//		name 		队列名称 为空时，名称随机
+//		durable 	是否持久化
+//		autoDelete 	delete when unused 是否自动删除
+//		exclusive	是否设置排他
+//		noWait		是否非阻塞
+//		args		amqp.Table map[string]interface{} 参数
+*/
+func (s *rmq) CreateExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
 	channel, err := s.connection.Channel()
 	if err != nil {
 		return err
@@ -323,7 +350,7 @@ func (s *rmq) CreateExchangeAction(name, kind string, durable, autoDelete, inter
 		args,       // arguments
 	)
 }
-func (s *rmq) CreateQueueAction(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (queue amqp.Queue, err error) {
+func (s *rmq) CreateQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (queue amqp.Queue, err error) {
 	channel, err := s.connection.Channel()
 	if err != nil {
 		return queue, err
@@ -339,19 +366,7 @@ func (s *rmq) CreateQueueAction(name string, durable, autoDelete, exclusive, noW
 		args,       // arguments 参数
 	)
 }
-
-func (s *rmq) CreateExchange(name, kind string) error {
-	return s.CreateExchangeAction(
-		name,  // name
-		kind,  // type
-		true,  // durable
-		false, // auto-deleted
-		false, // internal true表示这个exchange不可以被client用来推送消息，仅用来进行exchange和exchange之间的绑定
-		false, // no-wait
-		nil,   // arguments
-	)
-}
-func (s *rmq) CreateExchangeBind(name string, exchange string, routingKeys ...string) error {
+func (s *rmq) CreateExchangeBind(name string, exchange string, noWait bool, args amqp.Table, routingKeys ...string) error {
 	channel, err := s.connection.Channel()
 	if err != nil {
 		return err
@@ -363,8 +378,8 @@ func (s *rmq) CreateExchangeBind(name string, exchange string, routingKeys ...st
 			name,     // name
 			k,        // routing key
 			exchange, // exchange
-			false,
-			nil,
+			noWait,
+			args,
 		)
 		if err != nil {
 			return err
@@ -372,25 +387,7 @@ func (s *rmq) CreateExchangeBind(name string, exchange string, routingKeys ...st
 	}
 	return nil
 }
-
-func (s *rmq) CreateQueue(nameList ...string) error {
-	// 队列不存在创建
-	for _, name := range nameList {
-		_, err := s.CreateQueueAction(
-			name,  // name 队列名称 为空时，名称随机
-			true,  // durable 是否持久化
-			false, // delete when unused 是否自动删除
-			false, // exclusive 是否设置排他
-			false, // no-wait 是否非阻塞
-			nil,   // arguments 参数
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (s *rmq) CreateQueueBind(name string, exchange string, routingKeys ...string) error {
+func (s *rmq) CreateQueueBind(name string, exchange string, noWait bool, args amqp.Table, routingKeys ...string) error {
 	channel, err := s.connection.Channel()
 	if err != nil {
 		return err
@@ -402,8 +399,8 @@ func (s *rmq) CreateQueueBind(name string, exchange string, routingKeys ...strin
 			name,     // queue name
 			k,        // routing key
 			exchange, // exchange
-			false,
-			nil,
+			noWait,
+			args,
 		)
 		if err != nil {
 			return err

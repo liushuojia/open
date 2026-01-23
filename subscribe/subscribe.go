@@ -13,7 +13,7 @@ type Conn interface {
 	Register(channel string, fn func(context.Context, string, []byte) error) error
 
 	// UnRegister 注销订阅
-	UnRegister(channel string)
+	UnRegister(channels ...string)
 
 	// Publish 发送消息
 	Publish(ctx context.Context, channel string, body []byte) error

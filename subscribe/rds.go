@@ -117,13 +117,15 @@ func (s *rds) Register(channel string, fn func(context.Context, string, []byte) 
 	}
 	return nil
 }
-func (s *rds) UnRegister(channel string) {
-	if _, ok := s.subscribeMap.LoadAndDelete(channel); !ok {
-		return
-	}
-	if s.isRunning && s.sub != nil {
-		log.Println("[redis] unsubscribe channel:", channel)
-		_ = s.sub.Unsubscribe(s.ctx, channel)
+func (s *rds) UnRegister(channels ...string) {
+	for _, channel := range channels {
+		if _, ok := s.subscribeMap.LoadAndDelete(channel); !ok {
+			return
+		}
+		if s.isRunning && s.sub != nil {
+			log.Println("[redis] unsubscribe channel:", channel)
+			_ = s.sub.Unsubscribe(s.ctx, channel)
+		}
 	}
 }
 
