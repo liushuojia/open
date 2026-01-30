@@ -17,6 +17,7 @@ const (
 )
 
 var _ Conn = (*rmq)(nil)
+var _ RmqExchange = (*rmq)(nil)
 
 type rmq struct {
 	ctx    context.Context
@@ -36,6 +37,15 @@ type rmq struct {
 }
 
 func NewRmq(user, password, host string, port int, vhost string) Conn {
+	conn := &rmq{
+		url:           fmt.Sprintf("amqp://%s:%s@%s:%d/%s", user, password, host, port, vhost),
+		notifyConnect: make(chan struct{}),
+		notifyClose:   make(chan *amqp.Error),
+		isRunning:     false,
+	}
+	return conn
+}
+func NewRmqExchange(user, password, host string, port int, vhost string) RmqExchange {
 	conn := &rmq{
 		url:           fmt.Sprintf("amqp://%s:%s@%s:%d/%s", user, password, host, port, vhost),
 		notifyConnect: make(chan struct{}),
@@ -296,14 +306,14 @@ func (s *rmq) PublishExchange(ctx context.Context, exchange, key string, body []
 }
 
 /*
-	amqp.ExchangeFanout
-	amqp.ExchangeDirect
-	amqp.ExchangeTopic
-	amqp.ExchangeHeaders
-
-	topic 举例：
-	item.# ：能够匹配 item.insert.abc 或者 item.insert
-	item.* ：只能匹配 item.insert
+//		amqp.ExchangeFanout
+//		amqp.ExchangeDirect
+//		amqp.ExchangeTopic
+//		amqp.ExchangeHeaders
+//
+//		topic 举例：
+//		item.# ：能够匹配 item.insert.abc 或者 item.insert
+//		item.* ：只能匹配 item.insert
 */
 
 func (s *rmq) CreateQueueAction(nameList ...string) error {
@@ -325,7 +335,6 @@ func (s *rmq) CreateQueueAction(nameList ...string) error {
 }
 
 /*
-CreateExchange
 //		name 		队列名称 为空时，名称随机
 //		durable 	是否持久化
 //		autoDelete 	delete when unused 是否自动删除
@@ -333,6 +342,7 @@ CreateExchange
 //		noWait		是否非阻塞
 //		args		amqp.Table map[string]interface{} 参数
 */
+
 func (s *rmq) CreateExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
 	channel, err := s.connection.Channel()
 	if err != nil {
