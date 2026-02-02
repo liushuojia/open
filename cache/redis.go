@@ -27,6 +27,12 @@ type redisCache[K KEY, V VAL] struct {
 	keyList []string
 }
 
+/*
+NewRedisCache
+// prefix 前缀
+// expire 有效期
+// key2Id 结构体 关键词索引 可以多个
+*/
 func NewRedisCache[K KEY, T VAL](rds *redis.Client, prefix string, expire time.Duration, key2Id ...string) Cache[K, T] {
 	if expire <= 0 {
 		expire = defaultExpireSecond
