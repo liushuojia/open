@@ -19,7 +19,7 @@ func MysqlConnect(address, username, password, database string) (*gorm.DB, error
 	// 对密码进行URL编码，处理特殊字符（如@、:、/等）
 	log.Println(fmt.Sprintf(
 		"connect mysql - %s:%s@tcp(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		username, password, address, database,
+		username, "******", address, database,
 	))
 
 	// 创建 GORM 日志记录器

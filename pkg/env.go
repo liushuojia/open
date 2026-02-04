@@ -1,9 +1,6 @@
 package pkg
 
 import (
-	"errors"
-	"strconv"
-
 	"github.com/liushuojia/open/env"
 )
 
@@ -16,16 +13,8 @@ func Get(k string) (string, bool) {
 	return env.Get(envPrefix + k)
 }
 func GetInt64(k string) (int64, error) {
-	v, ok := env.Get(envPrefix + k)
-	if !ok {
-		return 0, errors.New("not found")
-	}
-	return strconv.ParseInt(v, 10, 64)
+	return env.GetInt64(envPrefix + k)
 }
 func GetBool(k string) (bool, error) {
-	v, ok := env.Get(envPrefix + k)
-	if !ok {
-		return false, errors.New("not found")
-	}
-	return strconv.ParseBool(v)
+	return env.GetBool(envPrefix + k)
 }

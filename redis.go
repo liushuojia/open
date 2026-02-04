@@ -17,7 +17,7 @@ const (
 func RedisConnect(address, password string, db int) (*redis.Client, error) {
 	log.Println(fmt.Sprintf(
 		"connect redis - address:%s password:%s db:%d",
-		address, password, db,
+		address, "******", db,
 	))
 
 	ops := &redis.Options{
