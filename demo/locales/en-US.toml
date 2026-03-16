@@ -1,0 +1,22 @@
+[greet]
+other = "Hello, {{.name}}!"
+
+[error.not_found]
+other = "Resource {{.id}} not found"
+
+[apple_count]
+description = "Apple count description"
+zero = "You have 0 apples"
+one = "You have 1 apple -"    # 英文 1 个苹果用单数 apple
+other = "You have {{.count}} apples -----" # 其他数量用复数 apples
+
+
+[user.login]          # 嵌套分组：user -> login
+success = "Login successful，{{.username}}！"
+fail = "Login failed：{{.reason}}"
+captcha_error = "Incorrect verification code（{{.times}} times left）"
+
+[user.profile]        # 嵌套分组：user -> profile
+update_success = "Data updated successfully"
+update_fail = "Data update failed：{{.reason}}"
+avatar_error = "Failed to upload avatar: file size exceeds {{.maxSize}}MB"

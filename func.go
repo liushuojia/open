@@ -4,7 +4,9 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"math/rand"
+	"os"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -38,4 +40,17 @@ func RandString(l int, numberOnly bool) string {
 		result = append(result, bytesTmp[r.Intn(len(bytesTmp))])
 	}
 	return string(result)
+}
+
+func LocalDir(baseDir string) string {
+	// 加载所有语言配置文件
+	d, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	if n := strings.Index(d, "/"+baseDir+"/"); n >= 0 {
+		d = d[:n] + "/" + baseDir
+	}
+	return d
 }

@@ -1,0 +1,22 @@
+[greet]
+other = "你好，{{.name}}！"
+
+[error.not_found]
+other = "资源 {{.id}} 不存在"
+
+[apple_count]
+description = "苹果数量描述"  # 可选：文案描述（便于维护）
+zero = "你有 0 个苹果"       # 数量=0 时使用
+one = "你有 1 个苹果 -"        # 数量=1 时使用
+other = "你有 {{.count}} 个苹果 -----" # 其他数量
+
+
+[user.login]          # 嵌套分组：user -> login
+success = "登录成功，{{.username}}！"
+fail = "登录失败：{{.reason}}"
+captcha_error = "验证码错误（剩余 {{.times}} 次）"
+
+[user.profile]        # 嵌套分组：user -> profile
+update_success = "资料更新成功"
+update_fail = "资料更新失败：{{.reason}}"
+avatar_error = "头像上传失败：文件大小超过 {{.maxSize}}MB"
