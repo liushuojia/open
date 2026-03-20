@@ -19,12 +19,7 @@ type I18n struct {
 	mu              sync.RWMutex
 }
 
-/*
-NewI18n
-defaultLanguage 默认语言
-languages 语言列表
-locales 语言文件
-*/
+/*	NewI18n		defaultLanguage 默认语言		languages 语言列表	locales 语言文件	*/
 func NewI18n(defaultLanguage string, languages []string, localesDir string) (*I18n, error) {
 	conn := &I18n{
 		defaultLanguage: defaultLanguage,
