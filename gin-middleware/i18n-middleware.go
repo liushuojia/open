@@ -1,11 +1,13 @@
 package gin_middleware
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	utils "github.com/liushuojia/open"
+	"github.com/liushuojia/open"
 )
 
 // 定义上下文键名
@@ -14,7 +16,7 @@ const (
 	TransKey = "trans" // 存储翻译函数
 )
 
-var i18n *utils.I18n
+var i18nConn *utils.I18n
 
 // I18nMiddleware Gin 国际化中间件：解析语言标识并挂载翻译函数
 func I18nMiddleware(defaultLanguage string, supportLanguages []string, localeDir string) gin.HandlerFunc {
@@ -23,11 +25,11 @@ func I18nMiddleware(defaultLanguage string, supportLanguages []string, localeDir
 			err  error
 			lang string
 		)
-		if i18n == nil {
-			i18n, err = utils.NewI18n(defaultLanguage, supportLanguages, localeDir)
+		if i18nConn == nil {
+			i18nConn, err = utils.NewI18n(defaultLanguage, supportLanguages, localeDir)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
-					"message": "请设置语言文件夹 - " + err.Error(),
+					"message": "Please set up the language folder - " + err.Error(),
 				})
 				c.Abort()
 			}
@@ -74,8 +76,8 @@ func I18nMiddleware(defaultLanguage string, supportLanguages []string, localeDir
 func setLangToContext(c *gin.Context, lang string) {
 	c.Set(LangKey, lang)
 	// 挂载翻译函数（简化接口内调用）
-	c.Set(TransKey, func(key string, data map[string]interface{}) (string, error) {
-		return i18n.Translate(lang, key, data)
+	c.Set(TransKey, func(key string, data map[string]any) (string, error) {
+		return i18nConn.Translate(lang, key, data)
 	})
 }
 
@@ -104,4 +106,22 @@ func normalizeLang(language string) string {
 	default:
 		return language
 	}
+}
+
+func I18nTransByKey(c *gin.Context, key string, data map[string]any) (string, error) {
+	trans, ok := c.MustGet(TransKey).(func(string, map[string]any) (string, error))
+	if !ok {
+		return "", errors.New("key not found")
+	}
+
+	// 调用翻译（带变量）
+	return trans(key, data)
+}
+
+func I18nTrans(c *gin.Context, key string, data map[string]any) string {
+	trans, err := I18nTransByKey(c, key, data)
+	if err != nil {
+		return fmt.Sprintf("%v", data)
+	}
+	return trans
 }
